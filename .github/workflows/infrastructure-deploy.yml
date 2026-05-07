@@ -10,8 +10,9 @@
 #   3. terraform fmt   — checks formatting
 #   4. Ensure state S3 bucket exists (bootstrap)
 #   5. terraform init  — downloads providers
-#   6. terraform plan  — shows what will change (PR only)
-#   7. terraform apply — applies changes (main branch only)
+#   6. Write terraform.tfvars from GitHub secrets
+#   7. terraform plan  — shows what will change (PR only)
+#   8. terraform apply — applies changes (main branch only)
 # -------------------------------------------------
 
 name: Infrastructure Deploy
@@ -112,24 +113,33 @@ jobs:
             -backend-config="key=prod/terraform.tfstate" \
             -backend-config="region=$AWS_REGION"
 
-      # Step 7 — Validate that the configuration is syntactically correct
+      # Step 7 — Build terraform.tfvars at runtime from GitHub secrets
+      # terraform.tfvars is gitignored so it must be generated here each run.
+      # Variables with defaults (aws_region, project_name, etc.) are omitted.
+      - name: Write terraform.tfvars
+        run: |
+          cat > terraform.tfvars <<EOF
+          ami_id               = "${{ secrets.AMI_ID }}"
+          docker_image         = "${{ secrets.DOCKER_IMAGE }}"
+          mongo_uri            = "${{ secrets.MONGO_URI }}"
+          frontend_bucket_name = "${{ secrets.FRONTEND_BUCKET_NAME }}"
+          alert_email          = "${{ secrets.ALERT_EMAIL }}"
+          EOF
+
+      # Step 8 — Validate that the configuration is syntactically correct
       - name: Terraform Validate
         run: terraform validate
 
-      # Step 8 — Show what Terraform will create/change/destroy
+      # Step 9 — Show what Terraform will create/change/destroy
       # This step runs on PRs so reviewers can see changes before merge
       - name: Terraform Plan
         if: github.event_name == 'pull_request'
         run: terraform plan -var-file=terraform.tfvars
-        env:
-          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
 
-      # Step 9 — Apply changes (only on push to main, not on PRs)
+      # Step 10 — Apply changes (only on push to main, not on PRs)
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve -var-file=terraform.tfvars
-        env:
-          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
 
       # Step 10 — Export key Terraform outputs for downstream use
       - name: Export Terraform outputs

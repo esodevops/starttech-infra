@@ -23,10 +23,15 @@ env:
 on:
   push:
     branches: [ main ]
-    paths: [ "terraform/**" ] # only run when Terraform files change
+    paths:
+      - "terraform/**"
+      - ".github/workflows/infrastructure-deploy.yml"
   pull_request:
     branches: [ main ]
-    paths: [ "terraform/**" ]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/infrastructure-deploy.yml"
+  workflow_dispatch:
 
 jobs:
   terraform:

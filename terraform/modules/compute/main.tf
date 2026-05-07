@@ -69,11 +69,6 @@ resource "aws_iam_role" "ec2_role" {
       Principal = { Service = "ec2.amazonaws.com" }
     }]
   })
-
-  tags = {
-    Name        = "${var.project_name}-ec2-role"
-    Environment = var.environment
-  }
 }
 
 # Attach the AWS managed policy that allows CloudWatch Logs and SSM access

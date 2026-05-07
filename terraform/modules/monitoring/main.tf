@@ -100,6 +100,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         type = "metric"
         properties = {
           title   = "ALB Request Count"
+          region  = "us-east-1"
           period  = 60
           stat    = "Sum"
           metrics = [["AWS/ApplicationELB", "RequestCount", "LoadBalancer", var.alb_arn_suffix]]
@@ -109,6 +110,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         type = "metric"
         properties = {
           title   = "ALB 5xx Errors"
+          region  = "us-east-1"
           period  = 60
           stat    = "Sum"
           metrics = [["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", var.alb_arn_suffix]]
@@ -118,6 +120,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         type = "metric"
         properties = {
           title   = "ALB Response Time (p99)"
+          region  = "us-east-1"
           period  = 60
           stat    = "p99"
           metrics = [["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", var.alb_arn_suffix]]

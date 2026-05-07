@@ -18,7 +18,7 @@ name: Infrastructure Deploy
 
 env:
   AWS_REGION: us-east-1
-  TF_STATE_BUCKET: starttech-terraform-state
+  TF_STATE_BUCKET_PREFIX: starttech-terraform-state
 
 on:
   push:
@@ -73,6 +73,11 @@ jobs:
       # Step 5 — Ensure the remote-state bucket exists (first run bootstrap)
       - name: Ensure Terraform state bucket exists
         run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          TF_STATE_BUCKET="${TF_STATE_BUCKET_PREFIX}-${ACCOUNT_ID}-${AWS_REGION}"
+
+          echo "TF_STATE_BUCKET=$TF_STATE_BUCKET" >> "$GITHUB_ENV"
+
           if aws s3api head-bucket --bucket "$TF_STATE_BUCKET" 2>/dev/null; then
             echo "State bucket already exists: $TF_STATE_BUCKET"
           else
@@ -101,7 +106,11 @@ jobs:
 
       # Step 6 — Download providers and configure the S3 backend
       - name: Terraform Init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=prod/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION"
 
       # Step 7 — Validate that the configuration is syntactically correct
       - name: Terraform Validate

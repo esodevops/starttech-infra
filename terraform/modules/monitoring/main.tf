@@ -78,7 +78,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency" {
   metric_name         = "TargetResponseTime"
   namespace           = "AWS/ApplicationELB"
   period              = 60
-  statistic           = "p99"
+  extended_statistic  = "p99"
   threshold           = 3
 
   dimensions = {

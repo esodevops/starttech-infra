@@ -113,35 +113,35 @@ jobs:
             -backend-config="key=prod/terraform.tfstate" \
             -backend-config="region=$AWS_REGION"
 
-      # Step 7 — Build terraform.tfvars at runtime from GitHub secrets
-      # terraform.tfvars is gitignored so it must be generated here each run.
-      # Variables with defaults (aws_region, project_name, etc.) are omitted.
-      - name: Write terraform.tfvars
-        run: |
-          cat > terraform.tfvars <<EOF
-          ami_id               = "${{ secrets.AMI_ID }}"
-          docker_image         = "${{ secrets.DOCKER_IMAGE }}"
-          mongo_uri            = "${{ secrets.MONGO_URI }}"
-          frontend_bucket_name = "${{ secrets.FRONTEND_BUCKET_NAME }}"
-          alert_email          = "${{ secrets.ALERT_EMAIL }}"
-          EOF
-
-      # Step 8 — Validate that the configuration is syntactically correct
+      # Step 7 — Validate that the configuration is syntactically correct
       - name: Terraform Validate
         run: terraform validate
 
-      # Step 9 — Show what Terraform will create/change/destroy
+      # Step 8 — Show what Terraform will create/change/destroy
       # This step runs on PRs so reviewers can see changes before merge
+      # Variables are passed as TF_VAR_* env vars — avoids file quoting issues
       - name: Terraform Plan
         if: github.event_name == 'pull_request'
-        run: terraform plan -var-file=terraform.tfvars
+        run: terraform plan
+        env:
+          TF_VAR_ami_id: ${{ secrets.AMI_ID }}
+          TF_VAR_docker_image: ${{ secrets.DOCKER_IMAGE }}
+          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
+          TF_VAR_frontend_bucket_name: ${{ secrets.FRONTEND_BUCKET_NAME }}
+          TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
 
-      # Step 10 — Apply changes (only on push to main, not on PRs)
+      # Step 9 — Apply changes (only on push to main, not on PRs)
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: terraform apply -auto-approve -var-file=terraform.tfvars
+        run: terraform apply -auto-approve
+        env:
+          TF_VAR_ami_id: ${{ secrets.AMI_ID }}
+          TF_VAR_docker_image: ${{ secrets.DOCKER_IMAGE }}
+          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
+          TF_VAR_frontend_bucket_name: ${{ secrets.FRONTEND_BUCKET_NAME }}
+          TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
 
-      # Step 10 — Export key Terraform outputs for downstream use
+      # Step 10 — Export key Terraform outputs for downstream use (main only)
       - name: Export Terraform outputs
         id: export_outputs
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

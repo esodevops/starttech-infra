@@ -8,12 +8,17 @@
 #   1. Checkout code
 #   2. Configure AWS credentials
 #   3. terraform fmt   — checks formatting
-#   4. terraform init  — downloads providers
-#   5. terraform plan  — shows what will change (PR only)
-#   6. terraform apply — applies changes (main branch only)
+#   4. Ensure state S3 bucket exists (bootstrap)
+#   5. terraform init  — downloads providers
+#   6. terraform plan  — shows what will change (PR only)
+#   7. terraform apply — applies changes (main branch only)
 # -------------------------------------------------
 
 name: Infrastructure Deploy
+
+env:
+  AWS_REGION: us-east-1
+  TF_STATE_BUCKET: starttech-terraform-state
 
 on:
   push:
@@ -48,7 +53,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       # Step 3 — Install Terraform CLI
       - name: Setup Terraform
@@ -60,15 +65,44 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
-      # Step 5 — Download providers and configure the S3 backend
+      # Step 5 — Ensure the remote-state bucket exists (first run bootstrap)
+      - name: Ensure Terraform state bucket exists
+        run: |
+          if aws s3api head-bucket --bucket "$TF_STATE_BUCKET" 2>/dev/null; then
+            echo "State bucket already exists: $TF_STATE_BUCKET"
+          else
+            echo "Creating state bucket: $TF_STATE_BUCKET"
+            if [ "$AWS_REGION" = "us-east-1" ]; then
+              aws s3api create-bucket --bucket "$TF_STATE_BUCKET" --region "$AWS_REGION"
+            else
+              aws s3api create-bucket \
+                --bucket "$TF_STATE_BUCKET" \
+                --region "$AWS_REGION" \
+                --create-bucket-configuration LocationConstraint="$AWS_REGION"
+            fi
+
+            aws s3api put-bucket-versioning \
+              --bucket "$TF_STATE_BUCKET" \
+              --versioning-configuration Status=Enabled
+
+            aws s3api put-bucket-encryption \
+              --bucket "$TF_STATE_BUCKET" \
+              --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+            aws s3api put-public-access-block \
+              --bucket "$TF_STATE_BUCKET" \
+              --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+          fi
+
+      # Step 6 — Download providers and configure the S3 backend
       - name: Terraform Init
         run: terraform init
 
-      # Step 6 — Validate that the configuration is syntactically correct
+      # Step 7 — Validate that the configuration is syntactically correct
       - name: Terraform Validate
         run: terraform validate
 
-      # Step 7 — Show what Terraform will create/change/destroy
+      # Step 8 — Show what Terraform will create/change/destroy
       # This step runs on PRs so reviewers can see changes before merge
       - name: Terraform Plan
         if: github.event_name == 'pull_request'
@@ -76,14 +110,14 @@ jobs:
         env:
           TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
 
-      # Step 8 — Apply changes (only on push to main, not on PRs)
+      # Step 9 — Apply changes (only on push to main, not on PRs)
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve -var-file=terraform.tfvars
         env:
           TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
 
-      # Step 9 — Export key Terraform outputs for downstream use
+      # Step 10 — Export key Terraform outputs for downstream use
       - name: Export Terraform outputs
         id: export_outputs
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

@@ -68,3 +68,10 @@ variable "alert_email" {
   description = "Email to receive CloudWatch alarm notifications"
   type        = string
 }
+
+# ---- CloudFront API Proxy ----
+variable "alb_dns_name" {
+  description = "ALB DNS name used to proxy /api/* through CloudFront (avoids mixed-content errors)"
+  type        = string
+  default     = ""
+}

@@ -54,6 +54,44 @@ resource "aws_cloudfront_distribution" "frontend" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
+  # ALB origin — only added when alb_dns_name is provided
+  # Routes /api/* from HTTPS CloudFront to HTTP ALB, eliminating mixed-content errors
+  dynamic "origin" {
+    for_each = var.alb_dns_name != "" ? [var.alb_dns_name] : []
+    content {
+      domain_name = origin.value
+      origin_id   = "ALB-backend"
+      custom_origin_config {
+        http_port              = 80
+        https_port             = 443
+        origin_protocol_policy = "http-only"
+        origin_ssl_protocols   = ["TLSv1.2"]
+      }
+    }
+  }
+
+  # API cache behavior — forwards /api/* to the ALB (no caching)
+  dynamic "ordered_cache_behavior" {
+    for_each = var.alb_dns_name != "" ? [var.alb_dns_name] : []
+    content {
+      path_pattern           = "/api/*"
+      target_origin_id       = "ALB-backend"
+      viewer_protocol_policy = "https-only"
+      allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+      cached_methods         = ["GET", "HEAD"]
+
+      forwarded_values {
+        query_string = true
+        headers      = ["Origin", "Authorization", "Content-Type"]
+        cookies { forward = "all" }
+      }
+
+      min_ttl     = 0
+      default_ttl = 0
+      max_ttl     = 0
+    }
+  }
+
   # Default cache behavior — how to serve files
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD"]

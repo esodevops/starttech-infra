@@ -10,7 +10,7 @@
 #   3. terraform fmt   — checks formatting
 #   4. Ensure state S3 bucket exists (bootstrap)
 #   5. terraform init  — downloads providers
-#   6. Write terraform.tfvars from GitHub secrets
+#   6. Sanitize and validate secrets used by Terraform
 #   7. terraform plan  — shows what will change (PR only)
 #   8. terraform apply — applies changes (main branch only)
 # -------------------------------------------------
@@ -113,35 +113,41 @@ jobs:
             -backend-config="key=prod/terraform.tfstate" \
             -backend-config="region=$AWS_REGION"
 
-      # Step 7 — Validate that the configuration is syntactically correct
+      # Step 7 — Normalize secret inputs and validate email format
+      - name: Prepare Terraform variables
+        run: |
+          ALERT_EMAIL_CLEAN=$(printf '%s' "${{ secrets.ALERT_EMAIL }}" | tr -d '\r\n' | xargs)
+
+          if ! printf '%s' "$ALERT_EMAIL_CLEAN" | grep -Eq '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
+            echo "Invalid ALERT_EMAIL secret value."
+            echo "Set ALERT_EMAIL to a plain email address (example: you@example.com), no quotes/spaces/newlines."
+            exit 1
+          fi
+
+          echo "TF_VAR_ami_id=${{ secrets.AMI_ID }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_docker_image=${{ secrets.DOCKER_IMAGE }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_mongo_uri=${{ secrets.MONGO_URI }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_frontend_bucket_name=${{ secrets.FRONTEND_BUCKET_NAME }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_alert_email=$ALERT_EMAIL_CLEAN" >> "$GITHUB_ENV"
+          echo "TF_VAR_alb_dns_name=${{ secrets.ALB_DNS_NAME }}" >> "$GITHUB_ENV"
+
+      # Step 8 — Validate that the configuration is syntactically correct
       - name: Terraform Validate
         run: terraform validate
 
-      # Step 8 — Show what Terraform will create/change/destroy
+      # Step 9 — Show what Terraform will create/change/destroy
       # This step runs on PRs so reviewers can see changes before merge
       # Variables are passed as TF_VAR_* env vars — avoids file quoting issues
       - name: Terraform Plan
         if: github.event_name == 'pull_request'
         run: terraform plan
-        env:
-          TF_VAR_ami_id: ${{ secrets.AMI_ID }}
-          TF_VAR_docker_image: ${{ secrets.DOCKER_IMAGE }}
-          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
-          TF_VAR_frontend_bucket_name: ${{ secrets.FRONTEND_BUCKET_NAME }}
-          TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
 
-      # Step 9 — Apply changes (only on push to main, not on PRs)
+      # Step 10 — Apply changes (only on push to main, not on PRs)
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve
-        env:
-          TF_VAR_ami_id: ${{ secrets.AMI_ID }}
-          TF_VAR_docker_image: ${{ secrets.DOCKER_IMAGE }}
-          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
-          TF_VAR_frontend_bucket_name: ${{ secrets.FRONTEND_BUCKET_NAME }}
-          TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
 
-      # Step 10 — Export key Terraform outputs for downstream use (main only)
+      # Step 11 — Export key Terraform outputs for downstream use (main only)
       - name: Export Terraform outputs
         id: export_outputs
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

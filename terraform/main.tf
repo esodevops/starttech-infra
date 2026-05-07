@@ -53,6 +53,7 @@ module "storage" {
   frontend_bucket_name    = var.frontend_bucket_name
   private_subnet_ids      = module.networking.private_subnet_ids
   redis_security_group_id = module.networking.redis_security_group_id
+  alb_dns_name            = var.alb_dns_name
 }
 
 # ---- Module 3: Monitoring (CloudWatch Logs + Alarms) ----

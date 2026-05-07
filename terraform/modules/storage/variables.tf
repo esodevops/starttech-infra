@@ -38,3 +38,9 @@ variable "redis_num_nodes" {
   type        = number
   default     = 1
 }
+
+variable "alb_dns_name" {
+  description = "ALB DNS name for CloudFront API proxy origin (empty string disables proxy)"
+  type        = string
+  default     = ""
+}

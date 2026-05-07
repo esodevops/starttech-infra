@@ -71,6 +71,13 @@ resource "aws_cloudfront_distribution" "frontend" {
     max_ttl     = 86400 # cache for up to 24 hours
   }
 
+  # Return index.html for 403s — S3 (private bucket + OAC) returns 403 for missing objects
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
   # Return index.html for all 404s (needed for React Router)
   custom_error_response {
     error_code         = 404

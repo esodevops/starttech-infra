@@ -149,6 +149,23 @@ fi
 if [ -n "$BUCKET_NAME" ]; then
   echo "Deleting all objects from s3://$BUCKET_NAME ..."
   aws s3 rm "s3://$BUCKET_NAME" --recursive || echo "Bucket may already be empty or not exist."
+
+  # If versioning is enabled, delete all object versions and delete markers too.
+  # Otherwise S3 DeleteBucket returns BucketNotEmpty (409).
+  echo "Deleting versioned objects (if any) from s3://$BUCKET_NAME ..."
+  aws s3api list-object-versions --bucket "$BUCKET_NAME" \
+    --query 'Versions[].{Key:Key,VersionId:VersionId}' --output text 2>/dev/null | \
+  while read -r KEY VERSION_ID; do
+    [ -z "$KEY" ] || [ -z "$VERSION_ID" ] && continue
+    aws s3api delete-object --bucket "$BUCKET_NAME" --key "$KEY" --version-id "$VERSION_ID" >/dev/null 2>&1 || true
+  done
+
+  aws s3api list-object-versions --bucket "$BUCKET_NAME" \
+    --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' --output text 2>/dev/null | \
+  while read -r KEY VERSION_ID; do
+    [ -z "$KEY" ] || [ -z "$VERSION_ID" ] && continue
+    aws s3api delete-object --bucket "$BUCKET_NAME" --key "$KEY" --version-id "$VERSION_ID" >/dev/null 2>&1 || true
+  done
 else
   echo "Could not determine bucket name — skipping S3 empty step."
 fi

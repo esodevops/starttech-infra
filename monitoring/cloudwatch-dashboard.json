@@ -1,0 +1,65 @@
+{
+  "widgets": [
+    {
+      "type": "text",
+      "properties": {
+        "markdown": "# StartTech Production Dashboard\nReal-time overview of the backend API, load balancer, and cache."
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "title": "ALB — Requests Per Minute",
+        "period": 60,
+        "stat": "Sum",
+        "metrics": [
+          ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", "YOUR_ALB_ARN_SUFFIX"]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "title": "ALB — 5xx Errors",
+        "period": 60,
+        "stat": "Sum",
+        "metrics": [
+          ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "YOUR_ALB_ARN_SUFFIX"]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "title": "ALB — Response Time p99 (seconds)",
+        "period": 60,
+        "stat": "p99",
+        "metrics": [
+          ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "YOUR_ALB_ARN_SUFFIX"]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "title": "EC2 — Average CPU Utilization (%)",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", "starttech-asg"]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "title": "ElastiCache — Cache Hit Rate (%)",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          ["AWS/ElastiCache", "CacheHitRate", "CacheClusterId", "starttech-redis"]
+        ]
+      }
+    }
+  ]
+}

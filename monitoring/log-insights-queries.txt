@@ -1,0 +1,42 @@
+# CloudWatch Logs Insights Queries
+# Use these in: AWS Console → CloudWatch → Logs Insights
+# Select log group: /starttech/prod/backend
+# -------------------------------------------------------
+
+# --- 1. All errors in the last hour ---
+# Shows every ERROR log line with its timestamp
+fields @timestamp, @message
+| filter @message like /ERROR/
+| sort @timestamp desc
+| limit 50
+
+
+# --- 2. Count of each log level per 5 minutes ---
+# Useful for spotting sudden spikes in errors
+fields @timestamp, @message
+| parse @message "level=* " as log_level
+| stats count() as count by log_level, bin(5m)
+| sort @timestamp desc
+
+
+# --- 3. Average API response time per endpoint ---
+# Assumes backend logs lines like: method=GET path=/api/todos duration_ms=42
+fields @timestamp, @message
+| parse @message "method=* path=* duration_ms=*" as method, path, duration_ms
+| stats avg(duration_ms) as avg_ms, max(duration_ms) as max_ms by path
+| sort avg_ms desc
+
+
+# --- 4. Top 10 slowest requests ---
+fields @timestamp, @message
+| parse @message "method=* path=* duration_ms=*" as method, path, duration_ms
+| sort duration_ms desc
+| limit 10
+
+
+# --- 5. All logs from a specific EC2 instance ---
+# Replace i-1234567890abcdef0 with the real instance ID
+fields @timestamp, @message
+| filter @logStream = "i-1234567890abcdef0"
+| sort @timestamp desc
+| limit 100

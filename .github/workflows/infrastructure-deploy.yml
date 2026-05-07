@@ -1,0 +1,107 @@
+# -------------------------------------------------
+# Infrastructure CI/CD Pipeline
+#
+# Triggers on every push to main that changes
+# anything under the terraform/ directory.
+#
+# Steps:
+#   1. Checkout code
+#   2. Configure AWS credentials
+#   3. terraform fmt   — checks formatting
+#   4. terraform init  — downloads providers
+#   5. terraform plan  — shows what will change (PR only)
+#   6. terraform apply — applies changes (main branch only)
+# -------------------------------------------------
+
+name: Infrastructure Deploy
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ "terraform/**" ] # only run when Terraform files change
+  pull_request:
+    branches: [ main ]
+    paths: [ "terraform/**" ]
+
+jobs:
+  terraform:
+    name: Terraform Plan & Apply
+    runs-on: ubuntu-latest
+    outputs:
+      frontend_bucket_name: ${{ steps.export_outputs.outputs.frontend_bucket_name }}
+      cloudfront_distribution_id: ${{ steps.export_outputs.outputs.cloudfront_distribution_id }}
+      backend_url: ${{ steps.export_outputs.outputs.backend_url }}
+    defaults:
+      run:
+        working-directory: terraform # all commands run inside the terraform/ folder
+
+    steps:
+      # Step 1 — Check out the code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2 — Authenticate with AWS using GitHub secrets
+      # Add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in:
+      # GitHub repo → Settings → Secrets and variables → Actions
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      # Step 3 — Install Terraform CLI
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      # Step 4 — Check that all files are properly formatted
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      # Step 5 — Download providers and configure the S3 backend
+      - name: Terraform Init
+        run: terraform init
+
+      # Step 6 — Validate that the configuration is syntactically correct
+      - name: Terraform Validate
+        run: terraform validate
+
+      # Step 7 — Show what Terraform will create/change/destroy
+      # This step runs on PRs so reviewers can see changes before merge
+      - name: Terraform Plan
+        if: github.event_name == 'pull_request'
+        run: terraform plan -var-file=terraform.tfvars
+        env:
+          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
+
+      # Step 8 — Apply changes (only on push to main, not on PRs)
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -var-file=terraform.tfvars
+        env:
+          TF_VAR_mongo_uri: ${{ secrets.MONGO_URI }}
+
+      # Step 9 — Export key Terraform outputs for downstream use
+      - name: Export Terraform outputs
+        id: export_outputs
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          FRONTEND_BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
+          CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
+          BACKEND_URL=$(terraform output -raw backend_url)
+
+          echo "frontend_bucket_name=$FRONTEND_BUCKET_NAME" >> "$GITHUB_OUTPUT"
+          echo "cloudfront_distribution_id=$CLOUDFRONT_DISTRIBUTION_ID" >> "$GITHUB_OUTPUT"
+          echo "backend_url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Terraform Outputs For starttech-application"
+            echo ""
+            echo "Set these in starttech-application repository secrets:"
+            echo ""
+            echo "- S3_BUCKET_NAME = $FRONTEND_BUCKET_NAME"
+            echo "- CLOUDFRONT_DISTRIBUTION_ID = $CLOUDFRONT_DISTRIBUTION_ID"
+            echo "- REACT_APP_API_URL = $BACKEND_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -37,36 +37,110 @@ if [ "$CONFIRM" != "destroy" ]; then
   exit 0
 fi
 
-# Determine how variables will be supplied.
-# Option A (recommended locally): set TF_VAR_* environment variables before running this script.
-# Option B (legacy): have a terraform.tfvars file present.
-# The destroy command will pick up whichever is available.
+# ---- Auto-populate missing TF_VAR_* from AWS / Terraform state ----
+# Any variable already exported in the environment is kept as-is.
+# Missing values are pulled from SSM Parameter Store, Terraform outputs,
+# or well-known AWS API calls so you don't have to export them by hand.
+
+AWS_REGION="${AWS_REGION:-us-east-1}"
+TF_STATE_BUCKET_PREFIX="${TF_STATE_BUCKET_PREFIX:-starttech-terraform-state}"
+
+echo "Resolving Terraform variables..."
+
+# --- alb_dns_name: skip auto-resolve (not needed for destroy, has a default) ---
+
+# --- ami_id: use any available Amazon Linux 2 AMI if not set ---
+if [ -z "$TF_VAR_ami_id" ]; then
+  TF_VAR_ami_id=$(aws ec2 describe-images \
+    --owners amazon \
+    --filters "Name=name,Values=amzn2-ami-hvm-2.0.*-x86_64-gp2" "Name=state,Values=available" \
+    --query "sort_by(Images, &CreationDate)[-1].ImageId" \
+    --output text --region "$AWS_REGION" 2>/dev/null || true)
+  [ -n "$TF_VAR_ami_id" ] && echo "  ami_id        → $TF_VAR_ami_id (latest Amazon Linux 2)"
+fi
+
+# --- docker_image: read from the ASG launch template user-data ---
+if [ -z "$TF_VAR_docker_image" ]; then
+  LT_ID=$(aws ec2 describe-launch-templates \
+    --filters "Name=launch-template-name,Values=starttech-*" \
+    --query "LaunchTemplates[0].LaunchTemplateId" --output text --region "$AWS_REGION" 2>/dev/null || true)
+  if [ -n "$LT_ID" ] && [ "$LT_ID" != "None" ]; then
+    USER_DATA=$(aws ec2 describe-launch-template-versions \
+      --launch-template-id "$LT_ID" --versions '$Latest' \
+      --query "LaunchTemplateVersions[0].LaunchTemplateData.UserData" \
+      --output text --region "$AWS_REGION" 2>/dev/null | base64 --decode 2>/dev/null || true)
+    TF_VAR_docker_image=$(echo "$USER_DATA" | grep -oP 'DOCKER_IMAGE=\K\S+' | head -1 || true)
+    [ -n "$TF_VAR_docker_image" ] && echo "  docker_image  → $TF_VAR_docker_image (from launch template)"
+  fi
+fi
+# Fallback placeholder — Terraform destroy doesn't actually launch instances
+[ -z "$TF_VAR_docker_image" ] && TF_VAR_docker_image="placeholder/image:latest" && \
+  echo "  docker_image  → placeholder (not needed for destroy)"
+
+# --- mongo_uri: look in SSM Parameter Store ---
+if [ -z "$TF_VAR_mongo_uri" ]; then
+  TF_VAR_mongo_uri=$(aws ssm get-parameter \
+    --name "/starttech/prod/mongo_uri" --with-decryption \
+    --query "Parameter.Value" --output text --region "$AWS_REGION" 2>/dev/null || true)
+  [ -n "$TF_VAR_mongo_uri" ] && echo "  mongo_uri     → (from SSM /starttech/prod/mongo_uri)"
+fi
+# Fallback placeholder — not needed at destroy time
+[ -z "$TF_VAR_mongo_uri" ] && TF_VAR_mongo_uri="mongodb://placeholder" && \
+  echo "  mongo_uri     → placeholder (not needed for destroy)"
+
+# --- frontend_bucket_name: look for the S3 bucket tagged with this project ---
+if [ -z "$TF_VAR_frontend_bucket_name" ]; then
+  TF_VAR_frontend_bucket_name=$(aws resourcegroupstaggingapi get-resources \
+    --tag-filters "Key=Name,Values=starttech-frontend" \
+    --resource-type-filters "s3:bucket" \
+    --query "ResourceTagMappingList[0].ResourceARN" --output text --region "$AWS_REGION" 2>/dev/null \
+    | sed 's|arn:aws:s3:::||' || true)
+  # Fallback: list buckets and find by name prefix
+  if [ -z "$TF_VAR_frontend_bucket_name" ] || [ "$TF_VAR_frontend_bucket_name" = "None" ]; then
+    TF_VAR_frontend_bucket_name=$(aws s3api list-buckets \
+      --query "Buckets[?starts_with(Name, 'starttech-frontend')].Name | [0]" \
+      --output text 2>/dev/null || true)
+  fi
+  [ -n "$TF_VAR_frontend_bucket_name" ] && [ "$TF_VAR_frontend_bucket_name" != "None" ] && \
+    echo "  frontend_bucket_name → $TF_VAR_frontend_bucket_name (from AWS)"
+fi
+
+# --- alert_email: look in SNS subscriptions for the starttech topic ---
+if [ -z "$TF_VAR_alert_email" ]; then
+  TOPIC_ARN=$(aws sns list-topics \
+    --query "Topics[?contains(TopicArn, 'starttech')].TopicArn | [0]" \
+    --output text --region "$AWS_REGION" 2>/dev/null || true)
+  if [ -n "$TOPIC_ARN" ] && [ "$TOPIC_ARN" != "None" ]; then
+    TF_VAR_alert_email=$(aws sns list-subscriptions-by-topic \
+      --topic-arn "$TOPIC_ARN" \
+      --query "Subscriptions[?Protocol=='email'].Endpoint | [0]" \
+      --output text --region "$AWS_REGION" 2>/dev/null || true)
+    [ -n "$TF_VAR_alert_email" ] && [ "$TF_VAR_alert_email" != "None" ] && \
+      echo "  alert_email   → $TF_VAR_alert_email (from SNS)"
+  fi
+fi
+[ -z "$TF_VAR_alert_email" ] || [ "$TF_VAR_alert_email" = "None" ] && \
+  TF_VAR_alert_email="noreply@example.com" && \
+  echo "  alert_email   → placeholder (not needed for destroy)"
+
+# Export all resolved values so Terraform picks them up
+export TF_VAR_ami_id TF_VAR_docker_image TF_VAR_mongo_uri TF_VAR_frontend_bucket_name TF_VAR_alert_email
+
+# alb_dns_name has a default="" in variables.tf so no export needed unless set
+[ -n "$TF_VAR_alb_dns_name" ] && export TF_VAR_alb_dns_name
+
+echo ""
 
 TFVARS_FLAG=""
 if [ -f "terraform.tfvars" ]; then
   TFVARS_FLAG="-var-file=terraform.tfvars"
-else
-  # Check that the minimum required TF_VAR_* env vars are set
-  MISSING=""
-  for VAR in TF_VAR_ami_id TF_VAR_docker_image TF_VAR_mongo_uri TF_VAR_frontend_bucket_name TF_VAR_alert_email; do
-    [ -z "${!VAR}" ] && MISSING="$MISSING $VAR"
-  done
-  if [ -n "$MISSING" ]; then
-    echo "ERROR: terraform.tfvars not found and these TF_VAR_* env vars are not set:"
-    echo "$MISSING"
-    echo ""
-    echo "Either:"
-    echo "  1. Copy terraform.tfvars.example to terraform.tfvars and fill in your values, OR"
-    echo "  2. Export the required TF_VAR_* environment variables before running this script."
-    exit 1
-  fi
 fi
 
 # Step 1: Empty the S3 bucket before destroying it
 # (Terraform cannot delete a non-empty S3 bucket)
 echo ""
 echo "Step 1/3 — Emptying S3 frontend bucket..."
-# Try to get bucket name from tfvars file first, then from env var
+# Bucket name was already resolved above; also honour terraform.tfvars as a fallback
 if [ -f "terraform.tfvars" ]; then
   BUCKET_NAME=$(grep 'frontend_bucket_name' terraform.tfvars | awk -F'"' '{print $2}')
 else
@@ -83,7 +157,6 @@ fi
 echo ""
 echo "Step 2/3 — Initializing Terraform..."
 
-AWS_REGION="${AWS_REGION:-us-east-1}"
 TF_STATE_BUCKET_PREFIX="${TF_STATE_BUCKET_PREFIX:-starttech-terraform-state}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 EXPECTED_STATE_BUCKET="${TF_STATE_BUCKET_PREFIX}-${ACCOUNT_ID}-${AWS_REGION}"

@@ -146,26 +146,37 @@ if [ -f "terraform.tfvars" ]; then
 else
   BUCKET_NAME="$TF_VAR_frontend_bucket_name"
 fi
-if [ -n "$BUCKET_NAME" ]; then
-  echo "Deleting all objects from s3://$BUCKET_NAME ..."
-  aws s3 rm "s3://$BUCKET_NAME" --recursive || echo "Bucket may already be empty or not exist."
+if [ -n "$BUCKET_NAME" ] && [ "$BUCKET_NAME" != "None" ]; then
+  echo "Emptying s3://$BUCKET_NAME (all objects, versions, and delete markers)..."
 
-  # If versioning is enabled, delete all object versions and delete markers too.
-  # Otherwise S3 DeleteBucket returns BucketNotEmpty (409).
-  echo "Deleting versioned objects (if any) from s3://$BUCKET_NAME ..."
-  aws s3api list-object-versions --bucket "$BUCKET_NAME" \
-    --query 'Versions[].{Key:Key,VersionId:VersionId}' --output text 2>/dev/null | \
-  while read -r KEY VERSION_ID; do
-    [ -z "$KEY" ] || [ -z "$VERSION_ID" ] && continue
-    aws s3api delete-object --bucket "$BUCKET_NAME" --key "$KEY" --version-id "$VERSION_ID" >/dev/null 2>&1 || true
+  # Delete all current objects
+  aws s3 rm "s3://$BUCKET_NAME" --recursive 2>/dev/null || true
+
+  # Delete all versioned objects in batches
+  while true; do
+    VERSIONS=$(aws s3api list-object-versions --bucket "$BUCKET_NAME" \
+      --max-items 1000 \
+      --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
+      --output json 2>/dev/null)
+    OBJS=$(echo "$VERSIONS" | grep -c '"Key"' || true)
+    [ "$OBJS" -eq 0 ] && break
+    echo "$VERSIONS" | aws s3api delete-objects --bucket "$BUCKET_NAME" --delete file:///dev/stdin >/dev/null 2>&1 || true
+    [ "$OBJS" -lt 1000 ] && break
   done
 
-  aws s3api list-object-versions --bucket "$BUCKET_NAME" \
-    --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' --output text 2>/dev/null | \
-  while read -r KEY VERSION_ID; do
-    [ -z "$KEY" ] || [ -z "$VERSION_ID" ] && continue
-    aws s3api delete-object --bucket "$BUCKET_NAME" --key "$KEY" --version-id "$VERSION_ID" >/dev/null 2>&1 || true
+  # Delete all delete markers in batches
+  while true; do
+    MARKERS=$(aws s3api list-object-versions --bucket "$BUCKET_NAME" \
+      --max-items 1000 \
+      --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
+      --output json 2>/dev/null)
+    OBJS=$(echo "$MARKERS" | grep -c '"Key"' || true)
+    [ "$OBJS" -eq 0 ] && break
+    echo "$MARKERS" | aws s3api delete-objects --bucket "$BUCKET_NAME" --delete file:///dev/stdin >/dev/null 2>&1 || true
+    [ "$OBJS" -lt 1000 ] && break
   done
+
+  echo "  s3://$BUCKET_NAME is now empty."
 else
   echo "Could not determine bucket name — skipping S3 empty step."
 fi

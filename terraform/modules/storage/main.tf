@@ -6,7 +6,8 @@
 
 # ---- S3 Bucket for React Frontend ----
 resource "aws_s3_bucket" "frontend" {
-  bucket = var.frontend_bucket_name
+  bucket        = var.frontend_bucket_name
+  force_destroy = true
 
   tags = {
     Name        = "${var.project_name}-frontend"

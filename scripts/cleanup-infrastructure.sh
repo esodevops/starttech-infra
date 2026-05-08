@@ -136,48 +136,79 @@ if [ -f "terraform.tfvars" ]; then
   TFVARS_FLAG="-var-file=terraform.tfvars"
 fi
 
-# Step 1: Empty the S3 bucket before destroying it
-# (Terraform cannot delete a non-empty S3 bucket)
-echo ""
-echo "Step 1/3 — Emptying S3 frontend bucket..."
-# Always resolve bucket name from live AWS (tfvars may contain placeholder values)
-BUCKET_NAME=$(aws s3api list-buckets \
-  --query "Buckets[?starts_with(Name, 'starttech-frontend')].Name | [0]" \
-  --output text 2>/dev/null || true)
-[ "$BUCKET_NAME" = "None" ] && BUCKET_NAME=""
-if [ -n "$BUCKET_NAME" ] && [ "$BUCKET_NAME" != "None" ]; then
-  echo "Emptying s3://$BUCKET_NAME (all objects, versions, and delete markers)..."
+# ---- Helper: empty one S3 bucket (objects + all versions + delete markers) ----
+empty_s3_bucket() {
+  local bucket="$1"
+  local tmp_delete
+  tmp_delete=$(mktemp /tmp/s3-delete-XXXXXX.json)
+  # Ensure temp file is always removed on exit
+  trap 'rm -f "$tmp_delete"' RETURN
 
-  # Delete all current objects
-  aws s3 rm "s3://$BUCKET_NAME" --recursive 2>/dev/null || true
+  echo "  Emptying s3://$bucket (objects, versions, delete markers)..."
 
-  # Delete all versioned objects in batches
+  # 1. Remove all current objects (fast path; skips versioning overhead)
+  aws s3 rm "s3://$bucket" --recursive --quiet 2>/dev/null || true
+
+  # 2. Delete versioned objects in batches of up to 1 000
   while true; do
-    VERSIONS=$(aws s3api list-object-versions --bucket "$BUCKET_NAME" \
+    aws s3api list-object-versions \
+      --bucket "$bucket" \
       --max-items 1000 \
       --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
-      --output json 2>/dev/null)
-    OBJS=$(echo "$VERSIONS" | grep -c '"Key"' || true)
-    [ "$OBJS" -eq 0 ] && break
-    echo "$VERSIONS" | aws s3api delete-objects --bucket "$BUCKET_NAME" --delete file:///dev/stdin >/dev/null 2>&1 || true
-    [ "$OBJS" -lt 1000 ] && break
+      --output json 2>/dev/null >"$tmp_delete" || break
+
+    # Skip if the query returned null or an empty list
+    if grep -q '"Key"' "$tmp_delete" 2>/dev/null; then
+      aws s3api delete-objects \
+        --bucket "$bucket" \
+        --delete "file://$tmp_delete" \
+        --output json >/dev/null 2>&1 || true
+    else
+      break
+    fi
   done
 
-  # Delete all delete markers in batches
+  # 3. Delete all delete markers in batches of up to 1 000
   while true; do
-    MARKERS=$(aws s3api list-object-versions --bucket "$BUCKET_NAME" \
+    aws s3api list-object-versions \
+      --bucket "$bucket" \
       --max-items 1000 \
       --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
-      --output json 2>/dev/null)
-    OBJS=$(echo "$MARKERS" | grep -c '"Key"' || true)
-    [ "$OBJS" -eq 0 ] && break
-    echo "$MARKERS" | aws s3api delete-objects --bucket "$BUCKET_NAME" --delete file:///dev/stdin >/dev/null 2>&1 || true
-    [ "$OBJS" -lt 1000 ] && break
+      --output json 2>/dev/null >"$tmp_delete" || break
+
+    if grep -q '"Key"' "$tmp_delete" 2>/dev/null; then
+      aws s3api delete-objects \
+        --bucket "$bucket" \
+        --delete "file://$tmp_delete" \
+        --output json >/dev/null 2>&1 || true
+    else
+      break
+    fi
   done
 
-  echo "  s3://$BUCKET_NAME is now empty."
+  echo "  s3://$bucket is now empty."
+}
+
+# Step 1: Empty ALL project S3 buckets before destroying
+# (Terraform cannot delete a non-empty bucket even when force_destroy = true
+#  if versioning has accumulated delete markers the provider does not purge)
+echo ""
+echo "Step 1/3 — Emptying project S3 buckets..."
+
+# Collect every bucket whose name starts with 'starttech-' (frontend, logs, etc.)
+# The state bucket is intentionally excluded here — it is handled after destroy.
+mapfile -t PROJECT_BUCKETS < <(
+  aws s3api list-buckets \
+    --query "Buckets[?starts_with(Name, 'starttech-') && !contains(Name, 'terraform-state')].Name" \
+    --output text 2>/dev/null | tr '\t' '\n' | grep -v '^$' | grep -v '^None$' || true
+)
+
+if [ "${#PROJECT_BUCKETS[@]}" -eq 0 ]; then
+  echo "  No project S3 buckets found — skipping."
 else
-  echo "Could not determine bucket name — skipping S3 empty step."
+  for BUCKET_NAME in "${PROJECT_BUCKETS[@]}"; do
+    empty_s3_bucket "$BUCKET_NAME"
+  done
 fi
 
 # Step 2: Initialize Terraform (in case .terraform/ directory is missing)
@@ -220,3 +251,24 @@ echo ""
 echo "=============================================="
 echo "  Cleanup complete. All resources destroyed."
 echo "=============================================="
+
+# ---- Optional: remove the Terraform state bucket itself ----
+# The state bucket is intentionally NOT managed by Terraform (it must
+# pre-exist) so terraform destroy does not touch it.  Prompt the user
+# to decide whether to delete it now.
+echo ""
+if [ -n "$TF_STATE_BUCKET" ] && [ "$TF_STATE_BUCKET" != "None" ]; then
+  read -p "Delete Terraform state bucket '$TF_STATE_BUCKET'? This is irreversible. [y/N] " DEL_STATE
+  if [[ "$DEL_STATE" =~ ^[Yy]$ ]]; then
+    echo "Emptying and deleting Terraform state bucket..."
+    empty_s3_bucket "$TF_STATE_BUCKET"
+    aws s3api delete-bucket --bucket "$TF_STATE_BUCKET" --region "$AWS_REGION" && \
+      echo "  Deleted s3://$TF_STATE_BUCKET." || \
+      echo "  WARNING: Could not delete s3://$TF_STATE_BUCKET — remove it manually."
+  else
+    echo "State bucket kept. Remember to delete s3://$TF_STATE_BUCKET manually if no longer needed."
+  fi
+fi
+
+echo ""
+echo "Done."

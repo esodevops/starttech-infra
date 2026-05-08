@@ -140,12 +140,11 @@ fi
 # (Terraform cannot delete a non-empty S3 bucket)
 echo ""
 echo "Step 1/3 — Emptying S3 frontend bucket..."
-# Bucket name was already resolved above; also honour terraform.tfvars as a fallback
-if [ -f "terraform.tfvars" ]; then
-  BUCKET_NAME=$(grep 'frontend_bucket_name' terraform.tfvars | awk -F'"' '{print $2}')
-else
-  BUCKET_NAME="$TF_VAR_frontend_bucket_name"
-fi
+# Always resolve bucket name from live AWS (tfvars may contain placeholder values)
+BUCKET_NAME=$(aws s3api list-buckets \
+  --query "Buckets[?starts_with(Name, 'starttech-frontend')].Name | [0]" \
+  --output text 2>/dev/null || true)
+[ "$BUCKET_NAME" = "None" ] && BUCKET_NAME=""
 if [ -n "$BUCKET_NAME" ] && [ "$BUCKET_NAME" != "None" ]; then
   echo "Emptying s3://$BUCKET_NAME (all objects, versions, and delete markers)..."
 

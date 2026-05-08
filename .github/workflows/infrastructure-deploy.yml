@@ -129,7 +129,21 @@ jobs:
           echo "TF_VAR_mongo_uri=${{ secrets.MONGO_URI }}" >> "$GITHUB_ENV"
           echo "TF_VAR_frontend_bucket_name=${{ secrets.FRONTEND_BUCKET_NAME }}" >> "$GITHUB_ENV"
           echo "TF_VAR_alert_email=$ALERT_EMAIL_CLEAN" >> "$GITHUB_ENV"
-          echo "TF_VAR_alb_dns_name=${{ secrets.ALB_DNS_NAME }}" >> "$GITHUB_ENV"
+
+          ALB_DNS_NAME_CLEAN=$(printf '%s' "${{ secrets.ALB_DNS_NAME }}" | tr -d '\r\n' | xargs)
+          if [ -z "$ALB_DNS_NAME_CLEAN" ]; then
+            ALB_DNS_NAME_CLEAN=$(aws elbv2 describe-load-balancers \
+              --query "LoadBalancers[?contains(LoadBalancerName, 'starttech-alb')].DNSName | [0]" \
+              --output text)
+          fi
+
+          if [ -z "$ALB_DNS_NAME_CLEAN" ] || [ "$ALB_DNS_NAME_CLEAN" = "None" ]; then
+            echo "WARNING: ALB DNS could not be resolved. CloudFront /api/* routing may not be created."
+            echo "Set ALB_DNS_NAME secret to your current ALB DNS to guarantee API routing via CloudFront."
+            ALB_DNS_NAME_CLEAN=""
+          fi
+
+          echo "TF_VAR_alb_dns_name=$ALB_DNS_NAME_CLEAN" >> "$GITHUB_ENV"
 
       # Step 8 — Validate that the configuration is syntactically correct
       - name: Terraform Validate

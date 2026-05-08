@@ -130,11 +130,12 @@ jobs:
           echo "TF_VAR_frontend_bucket_name=${{ secrets.FRONTEND_BUCKET_NAME }}" >> "$GITHUB_ENV"
           echo "TF_VAR_alert_email=$ALERT_EMAIL_CLEAN" >> "$GITHUB_ENV"
 
-          ALB_DNS_NAME_CLEAN=$(printf '%s' "${{ secrets.ALB_DNS_NAME }}" | tr -d '\r\n' | xargs)
+          # Strip any http:// or https:// prefix — CloudFront origin requires bare hostname only
+          ALB_DNS_NAME_CLEAN=$(printf '%s' "${{ secrets.ALB_DNS_NAME }}" | tr -d '\r\n' | xargs | sed 's|^https\?://||' | sed 's|/.*$||')
           if [ -z "$ALB_DNS_NAME_CLEAN" ]; then
             ALB_DNS_NAME_CLEAN=$(aws elbv2 describe-load-balancers \
               --query "LoadBalancers[?contains(LoadBalancerName, 'starttech-alb')].DNSName | [0]" \
-              --output text)
+              --output text | sed 's|^https\?://||' | sed 's|/.*$||')
           fi
 
           if [ -z "$ALB_DNS_NAME_CLEAN" ] || [ "$ALB_DNS_NAME_CLEAN" = "None" ]; then
@@ -143,6 +144,7 @@ jobs:
             ALB_DNS_NAME_CLEAN=""
           fi
 
+          echo "Resolved ALB_DNS_NAME: $ALB_DNS_NAME_CLEAN"
           echo "TF_VAR_alb_dns_name=$ALB_DNS_NAME_CLEAN" >> "$GITHUB_ENV"
 
       # Step 8 — Validate that the configuration is syntactically correct

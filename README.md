@@ -1,3 +1,5 @@
+[![Infrastructure Deploy](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml/badge.svg)](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml)
+
 # StartTech Infrastructure
 
 Terraform code and CI/CD pipeline for the StartTech full-stack application.

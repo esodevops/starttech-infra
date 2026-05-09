@@ -197,7 +197,10 @@ echo "Step 1/3 — Emptying project S3 buckets..."
 
 # Collect every bucket whose name starts with 'starttech-' (frontend, logs, etc.)
 # The state bucket is intentionally excluded here — it is handled after destroy.
-mapfile -t PROJECT_BUCKETS < <(
+PROJECT_BUCKETS=()
+while IFS= read -r bucket_name; do
+  PROJECT_BUCKETS+=("$bucket_name")
+done < <(
   aws s3api list-buckets \
     --query "Buckets[?starts_with(Name, 'starttech-') && !contains(Name, 'terraform-state')].Name" \
     --output text 2>/dev/null | tr '\t' '\n' | grep -v '^$' | grep -v '^None$' || true

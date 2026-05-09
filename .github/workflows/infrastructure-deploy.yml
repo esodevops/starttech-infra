@@ -23,12 +23,12 @@ env:
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - "terraform/**"
       - ".github/workflows/infrastructure-deploy.yml"
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - "terraform/**"
       - ".github/workflows/infrastructure-deploy.yml"
@@ -159,9 +159,23 @@ jobs:
         run: terraform plan
 
       # Step 10 — Apply changes (only on push to main, not on PRs)
+      # After a full teardown, ALB DNS changes. First apply creates ALB,
+      # second apply injects fresh ALB DNS into CloudFront /api/* origin.
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: terraform apply -auto-approve
+        run: |
+          terraform apply -auto-approve
+
+          FRESH_BACKEND_URL=$(terraform output -raw backend_url 2>/dev/null || true)
+          FRESH_ALB_DNS=$(printf '%s' "$FRESH_BACKEND_URL" | sed 's|^https\?://||' | sed 's|/.*$||')
+
+          if [ -n "$FRESH_ALB_DNS" ] && [ "$FRESH_ALB_DNS" != "None" ]; then
+            echo "Re-applying with fresh ALB DNS for CloudFront API routing: $FRESH_ALB_DNS"
+            export TF_VAR_alb_dns_name="$FRESH_ALB_DNS"
+            terraform apply -auto-approve
+          else
+            echo "Could not resolve fresh ALB DNS after first apply; skipping second apply."
+          fi
 
       # Step 11 — Export key Terraform outputs for downstream use (main only)
       - name: Export Terraform outputs
@@ -185,3 +199,35 @@ jobs:
             echo "- CLOUDFRONT_DISTRIBUTION_ID = $CLOUDFRONT_DISTRIBUTION_ID"
             echo "- REACT_APP_API_URL = $BACKEND_URL"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Step 12 — Sync infra outputs to starttech-application and starttech-infra secrets
+      # Requires a PAT in starttech-infra secrets with write access to both repos' actions secrets.
+      # Suggested secret name: APP_REPO_SECRETS_PAT
+      - name: Sync outputs to application and infra secrets
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.APP_REPO_SECRETS_PAT }}
+          TARGET_REPO: esodevops/starttech-application
+          SOURCE_REPO: esodevops/starttech-infra
+          FRONTEND_BUCKET_NAME: ${{ steps.export_outputs.outputs.frontend_bucket_name }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ steps.export_outputs.outputs.cloudfront_distribution_id }}
+          REACT_APP_API_URL: ${{ steps.export_outputs.outputs.backend_url }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Missing APP_REPO_SECRETS_PAT in starttech-infra repo secrets."
+            echo "Add a PAT with write access to Actions secrets on $TARGET_REPO."
+            exit 1
+          fi
+
+          if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ] || [ -z "$REACT_APP_API_URL" ]; then
+            echo "One or more Terraform outputs are empty; refusing to sync incomplete secrets."
+            exit 1
+          fi
+
+          gh secret set S3_BUCKET_NAME --repo "$TARGET_REPO" --body "$FRONTEND_BUCKET_NAME"
+          gh secret set CLOUDFRONT_DISTRIBUTION_ID --repo "$TARGET_REPO" --body "$CLOUDFRONT_DISTRIBUTION_ID"
+          gh secret set REACT_APP_API_URL --repo "$TARGET_REPO" --body "$REACT_APP_API_URL"
+          gh secret set BACKEND_URL --repo "$SOURCE_REPO" --body "$REACT_APP_API_URL"
+
+          echo "Synced S3_BUCKET_NAME, CLOUDFRONT_DISTRIBUTION_ID, and REACT_APP_API_URL to $TARGET_REPO"
+          echo "Synced BACKEND_URL to $SOURCE_REPO"

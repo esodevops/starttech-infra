@@ -57,7 +57,7 @@ variable "min_instances" {
 variable "max_instances" {
   description = "Maximum number of EC2 instances in the Auto Scaling Group"
   type        = number
-  default     = 4
+  default     = 3
 }
 
 variable "desired_instances" {

@@ -233,7 +233,7 @@ jobs:
           echo "Synced BACKEND_URL to $SOURCE_REPO"
 
       # Step 13 — Add NAT Gateway IP to MongoDB Atlas Access List
-      - name: Add NAT Gateway IP to MongoDB Atlas Access List
+      - name: Update MongoDB Atlas Access List for NAT Gateway
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           ATLAS_PUBLIC_KEY: ${{ secrets.ATLAS_PUBLIC_KEY }}
@@ -245,7 +245,6 @@ jobs:
             exit 1
           fi
 
-          # Trim accidental whitespace/newlines from secrets copied into GitHub Actions.
           ATLAS_PUBLIC_KEY_CLEAN=$(printf '%s' "$ATLAS_PUBLIC_KEY" | tr -d '\r\n' | xargs)
           ATLAS_PRIVATE_KEY_CLEAN=$(printf '%s' "$ATLAS_PRIVATE_KEY" | tr -d '\r\n' | xargs)
           ATLAS_PROJECT_ID_CLEAN=$(printf '%s' "$ATLAS_PROJECT_ID" | tr -d '\r\n' | xargs)
@@ -281,8 +280,7 @@ jobs:
             exit 1
           fi
 
-          echo "Ensuring NAT Gateway IP $NAT_IP is present in MongoDB Atlas Access List..."
-
+          echo "Fetching current Atlas Access List..."
           set +e
           ACCESS_LIST_JSON=$(curl -sS --http1.1 --ipv4 --connect-timeout 20 --retry 2 --retry-delay 2 \
             --digest -u "$ATLAS_PUBLIC_KEY_CLEAN:$ATLAS_PRIVATE_KEY_CLEAN" \
@@ -292,11 +290,32 @@ jobs:
 
           if [ $CURL_GET_EXIT -ne 0 ]; then
             echo "Failed to query Atlas Access List (curl exit: $CURL_GET_EXIT)."
-            echo "Check ATLAS_* secret formatting and Atlas API key permissions."
             exit 1
           fi
 
-          if printf '%s' "$ACCESS_LIST_JSON" | grep -q "$NAT_IP"; then
+          # Find all IPs in the access list that are not the current NAT IP and have the comment "NAT Gateway IP"
+          OLD_NAT_IPS=$(echo "$ACCESS_LIST_JSON" | jq -r ".[] | select(.comment == \"NAT Gateway IP\" and .ipAddress != \"$NAT_IP\") | .ipAddress")
+
+          for OLD_IP in $OLD_NAT_IPS; do
+            echo "Deleting old NAT Gateway IP $OLD_IP from Atlas Access List..."
+            set +e
+            HTTP_CODE=$(curl -sS --http1.1 --ipv4 --connect-timeout 20 --retry 2 --retry-delay 2 \
+              -o /tmp/atlas-accesslist-delete-response.json -w "%{http_code}" \
+              --digest -u "$ATLAS_PUBLIC_KEY_CLEAN:$ATLAS_PRIVATE_KEY_CLEAN" \
+              --header "Content-Type: application/json" \
+              --request DELETE \
+              "$ATLAS_ACCESS_LIST_URL/$OLD_IP")
+            set -e
+            if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "404" ]; then
+              echo "Failed to delete old NAT IP $OLD_IP from Atlas Access List (HTTP $HTTP_CODE)."
+              cat /tmp/atlas-accesslist-delete-response.json
+              exit 1
+            fi
+            echo "Deleted old NAT Gateway IP $OLD_IP from Atlas Access List."
+          done
+
+          # Now ensure the current NAT IP is present
+          if echo "$ACCESS_LIST_JSON" | grep -q "$NAT_IP"; then
             echo "NAT Gateway IP $NAT_IP already exists in Atlas Access List."
             exit 0
           fi
@@ -314,7 +333,6 @@ jobs:
 
           if [ $CURL_POST_EXIT -ne 0 ]; then
             echo "Failed to update Atlas Access List (curl exit: $CURL_POST_EXIT)."
-            echo "Check ATLAS_* secrets and network egress from the runner."
             exit 1
           fi
 

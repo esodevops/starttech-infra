@@ -1,0 +1,163 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "IdentityAndRegion",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeRegions",
+        "iam:GetUser",
+        "iam:ListAttachedUserPolicies",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicies",
+        "iam:GetRole",
+        "iam:ListRoles",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfiles",
+        "iam:GetInstanceProfile"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Networking",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeNatGateways",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeNetworkAcls",
+        "ec2:DescribeTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Compute",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeLaunchTemplates",
+        "ec2:DescribeLaunchTemplateVersions",
+        "ec2:DescribeImages",
+        "ec2:DescribeKeyPairs",
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeAutoScalingInstances",
+        "autoscaling:DescribeLaunchConfigurations",
+        "autoscaling:DescribeScalingActivities",
+        "autoscaling:DescribePolicies",
+        "autoscaling:DescribeScheduledActions",
+        "autoscaling:DescribeNotificationConfigurations",
+        "autoscaling:DescribeTags",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeRules",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetHealth",
+        "elasticloadbalancing:DescribeTags",
+        "elasticloadbalancing:DescribeLoadBalancerAttributes"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Storage",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketLocation",
+        "s3:GetBucketAcl",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketVersioning",
+        "s3:GetBucketWebsite",
+        "s3:GetBucketCORS",
+        "s3:GetBucketTagging",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:ListBucket",
+        "s3:GetObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::starttech-frontend*",
+        "arn:aws:s3:::starttech-frontend*/*",
+        "arn:aws:s3:::starttech-terraform-state*",
+        "arn:aws:s3:::starttech-terraform-state*/*"
+      ]
+    },
+    {
+      "Sid": "CDN",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:GetDistribution",
+        "cloudfront:GetDistributionConfig",
+        "cloudfront:ListDistributions",
+        "cloudfront:GetOriginAccessControl",
+        "cloudfront:GetOriginAccessControlConfig",
+        "cloudfront:ListOriginAccessControls",
+        "cloudfront:ListTagsForResource",
+        "cloudfront:ListInvalidations",
+        "cloudfront:GetInvalidation"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Cache",
+      "Effect": "Allow",
+      "Action": [
+        "elasticache:DescribeCacheClusters",
+        "elasticache:DescribeCacheSubnetGroups",
+        "elasticache:DescribeCacheParameterGroups",
+        "elasticache:DescribeCacheParameters",
+        "elasticache:DescribeReplicationGroups",
+        "elasticache:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Observability",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:DescribeAlarmsForMetric",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:GetDashboard",
+        "cloudwatch:ListDashboards",
+        "cloudwatch:ListTagsForResource",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:StartQuery",
+        "logs:StopQuery",
+        "logs:GetQueryResults",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Notifications",
+      "Effect": "Allow",
+      "Action": [
+        "sns:ListTopics",
+        "sns:GetTopicAttributes",
+        "sns:ListSubscriptions",
+        "sns:ListSubscriptionsByTopic",
+        "sns:ListTagsForResource"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

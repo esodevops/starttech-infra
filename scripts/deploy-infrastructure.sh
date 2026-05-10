@@ -49,6 +49,19 @@ echo ""
 echo "Step 3/3 — Applying changes..."
 terraform apply tfplan
 
+# Step 5: Re-apply with fresh ALB DNS so CloudFront /api/* origin is configured
+# This avoids frontend calls to /api/* falling back to S3 index.html.
+echo ""
+BACKEND_URL=$(terraform output -raw backend_url 2>/dev/null || true)
+FRESH_ALB_DNS=$(printf '%s' "$BACKEND_URL" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')
+
+if [ -n "$FRESH_ALB_DNS" ] && [ "$FRESH_ALB_DNS" != "None" ]; then
+  echo "Applying CloudFront API routing update with ALB DNS: $FRESH_ALB_DNS"
+  terraform apply -auto-approve -var-file=terraform.tfvars -var "alb_dns_name=$FRESH_ALB_DNS"
+else
+  echo "WARNING: Could not resolve ALB DNS from backend_url output; skipping CloudFront API routing update."
+fi
+
 echo ""
 echo "Deployment complete! Key outputs:"
 terraform output

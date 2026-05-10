@@ -1,4 +1,32 @@
-[![Infrastructure Deploy](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml/badge.svg)](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml)
+# Cross-Repository Integration
+
+### Connecting Infrastructure and Application Repos
+
+1. Deploy infrastructure using this repo. After a successful deploy, Terraform will output the CloudFront and ALB URLs.
+2. Use the provided secret sync scripts or GitHub Actions to propagate these outputs to the application repo as GitHub secrets (e.g., `REACT_APP_API_URL`, `S3_BUCKET_NAME`, `CLOUDFRONT_DISTRIBUTION_ID`).
+3. The application repo will consume these secrets for its own CI/CD and deployment.
+
+### MongoDB Atlas Integration
+
+1. Create a MongoDB Atlas API key (Project Owner).
+2. Add `ATLAS_PUBLIC_KEY`, `ATLAS_PRIVATE_KEY`, and `ATLAS_PROJECT_ID` as GitHub secrets.
+3. The CI workflow will update the Atlas IP Access List with the current NAT Gateway IP and remove old ones automatically.
+
+### Docker Image Integration
+
+1. The backend Docker image is built and pushed to Docker Hub by the application repo's CI/CD pipeline.
+2. EC2 instances (via user data or ASG launch template) pull the latest image using Docker Hub credentials from secrets.
+
+### IAM and Secret Propagation
+
+- Use the provided least-privilege IAM policies for CI/CD users and runners.
+- Use the secret sync scripts to keep both repos' secrets in sync after infra changes.
+
+# Additional Documentation
+
+- See [ARCHITECTURE.md](ARCHITECTURE.md) for system architecture documentation.
+- See [RUNBOOK.md](RUNBOOK.md) for operations and troubleshooting guide.
+  [![Infrastructure Deploy](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml/badge.svg)](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml)
 
 # StartTech Infrastructure
 

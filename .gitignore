@@ -12,5 +12,8 @@ override.tf.json
 crash.log
 crash.*.log
 
+# Terraform plan files
+tfplan
+
 # macOS
 .DS_Store

@@ -293,8 +293,10 @@ jobs:
             exit 1
           fi
 
+          ACCESS_LIST_ITEMS=$(printf '%s' "$ACCESS_LIST_JSON" | jq -c 'if type == "array" then . else (.results // []) end')
+
           # Find all IPs in the access list that are not the current NAT IP and have the comment "NAT Gateway IP"
-          OLD_NAT_IPS=$(echo "$ACCESS_LIST_JSON" | jq -r ".[] | select(.comment == \"NAT Gateway IP\" and .ipAddress != \"$NAT_IP\") | .ipAddress")
+          OLD_NAT_IPS=$(printf '%s' "$ACCESS_LIST_ITEMS" | jq -r --arg nat_ip "$NAT_IP" '.[] | select(.comment == "NAT Gateway IP" and .ipAddress != $nat_ip) | .ipAddress')
 
           for OLD_IP in $OLD_NAT_IPS; do
             echo "Deleting old NAT Gateway IP $OLD_IP from Atlas Access List..."
@@ -315,7 +317,7 @@ jobs:
           done
 
           # Now ensure the current NAT IP is present
-          if echo "$ACCESS_LIST_JSON" | grep -q "$NAT_IP"; then
+          if printf '%s' "$ACCESS_LIST_ITEMS" | jq -e --arg nat_ip "$NAT_IP" '.[] | select(.ipAddress == $nat_ip)' >/dev/null; then
             echo "NAT Gateway IP $NAT_IP already exists in Atlas Access List."
             exit 0
           fi

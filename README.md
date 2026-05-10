@@ -92,6 +92,33 @@ chmod +x scripts/deploy-infrastructure.sh
 
 ---
 
+## IAM Policy (Least Privilege)
+
+Use the first-pass CI/deploy policy in:
+
+- `iam/starttech-infra-ci-policy.json`
+
+This policy is tailored to the resources and scripts in this repository (Terraform modules + deploy/cleanup helpers), including:
+
+- VPC, subnets, route tables, IGW, NAT gateway, EIP, and security groups
+- ALB, listeners, target groups, EC2 launch templates, and Auto Scaling
+- S3 frontend bucket and Terraform state bucket operations
+- CloudFront distribution and origin access control
+- ElastiCache Redis cluster and subnet group
+- CloudWatch log groups, alarms, dashboards, and SNS alerts
+- IAM role/profile management needed for EC2 instance profile and `iam:PassRole`
+- Read actions used by helper scripts (`ssm:GetParameter`, tagging API lookups, topic/subscription reads)
+
+### Safe Migration From AdministratorAccess
+
+1. Create a new IAM user/role for infra deploy using the policy above.
+2. Keep your current working admin credentials as rollback.
+3. Test on a branch/PR first (`terraform plan`), then run apply on `main`.
+4. If successful, switch GitHub Actions secrets to the new principal.
+5. After stable runs, remove AdministratorAccess from the old principal.
+
+---
+
 ## After First Deploy
 
 Terraform will print:

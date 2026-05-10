@@ -1,3 +1,5 @@
+[![Infrastructure Deploy](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml/badge.svg)](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml)
+
 # Cross-Repository Integration
 
 ### Connecting Infrastructure and Application Repos
@@ -26,7 +28,7 @@
 
 - See [ARCHITECTURE.md](ARCHITECTURE.md) for system architecture documentation.
 - See [RUNBOOK.md](RUNBOOK.md) for operations and troubleshooting guide.
-  [![Infrastructure Deploy](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml/badge.svg)](https://github.com/esodevops/starttech-infra/actions/workflows/infrastructure-deploy.yml)
+  
 
 # StartTech Infrastructure
 

@@ -162,7 +162,7 @@ jobs:
       # After a full teardown, ALB DNS changes. First apply creates ALB,
       # second apply injects fresh ALB DNS into CloudFront /api/* origin.
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           terraform apply -auto-approve
 
@@ -180,7 +180,7 @@ jobs:
       # Step 11 — Export key Terraform outputs for downstream use (main only)
       - name: Export Terraform outputs
         id: export_outputs
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           FRONTEND_BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
           CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
@@ -204,14 +204,14 @@ jobs:
       # Requires a PAT in starttech-infra secrets with write access to both repos' actions secrets.
       # Suggested secret name: APP_REPO_SECRETS_PAT
       - name: Sync outputs to application and infra secrets
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.APP_REPO_SECRETS_PAT }}
           TARGET_REPO: esodevops/starttech-application
           SOURCE_REPO: esodevops/starttech-infra
           FRONTEND_BUCKET_NAME: ${{ steps.export_outputs.outputs.frontend_bucket_name }}
-          CLOUDFRONT_DISTRIBUTION_ID: ${{ steps.export.outputs.cloudfront_distribution_id }}
-          REACT_APP_API_URL: ${{ steps.export.outputs.backend_url }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ steps.export_outputs.outputs.cloudfront_distribution_id }}
+          REACT_APP_API_URL: ${{ steps.export_outputs.outputs.backend_url }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "Missing APP_REPO_SECRETS_PAT in starttech-infra repo secrets."
@@ -234,24 +234,63 @@ jobs:
 
       # Step 13 — Add NAT Gateway IP to MongoDB Atlas Access List
       - name: Add NAT Gateway IP to MongoDB Atlas Access List
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           ATLAS_PUBLIC_KEY: ${{ secrets.ATLAS_PUBLIC_KEY }}
           ATLAS_PRIVATE_KEY: ${{ secrets.ATLAS_PRIVATE_KEY }}
           ATLAS_PROJECT_ID: ${{ secrets.ATLAS_PROJECT_ID }}
         run: |
-          NAT_IP=$(curl -s http://checkip.amazonaws.com)
+          if [ -z "$ATLAS_PUBLIC_KEY" ] || [ -z "$ATLAS_PRIVATE_KEY" ] || [ -z "$ATLAS_PROJECT_ID" ]; then
+            echo "Atlas secrets are missing (ATLAS_PUBLIC_KEY / ATLAS_PRIVATE_KEY / ATLAS_PROJECT_ID)."
+            exit 1
+          fi
+
+          NAT_IP=$(aws ec2 describe-addresses \
+            --filters "Name=tag:Name,Values=starttech-nat-eip" \
+            --query "Addresses[0].PublicIp" \
+            --output text)
+
+          if [ -z "$NAT_IP" ] || [ "$NAT_IP" = "None" ]; then
+            NAT_ALLOC_ID=$(aws ec2 describe-nat-gateways \
+              --filter "Name=tag:Name,Values=starttech-nat-gw" "Name=state,Values=available,pending" \
+              --query "NatGateways[0].NatGatewayAddresses[0].AllocationId" \
+              --output text)
+
+            if [ -n "$NAT_ALLOC_ID" ] && [ "$NAT_ALLOC_ID" != "None" ]; then
+              NAT_IP=$(aws ec2 describe-addresses \
+                --allocation-ids "$NAT_ALLOC_ID" \
+                --query "Addresses[0].PublicIp" \
+                --output text)
+            fi
+          fi
+
           if [ -z "$NAT_IP" ]; then
             echo "Failed to retrieve NAT Gateway IP."
             exit 1
           fi
 
-          echo "Adding NAT Gateway IP $NAT_IP to MongoDB Atlas Access List..."
+          echo "Ensuring NAT Gateway IP $NAT_IP is present in MongoDB Atlas Access List..."
 
-          curl --digest -u "$ATLAS_PUBLIC_KEY:$ATLAS_PRIVATE_KEY" \
+          ACCESS_LIST_JSON=$(curl -sS --digest -u "$ATLAS_PUBLIC_KEY:$ATLAS_PRIVATE_KEY" \
+            "https://cloud.mongodb.com/api/atlas/v1.0/groups/$ATLAS_PROJECT_ID/accessList")
+
+          if printf '%s' "$ACCESS_LIST_JSON" | grep -q "$NAT_IP"; then
+            echo "NAT Gateway IP $NAT_IP already exists in Atlas Access List."
+            exit 0
+          fi
+
+          HTTP_CODE=$(curl -sS -o /tmp/atlas-accesslist-response.json -w "%{http_code}" \
+            --digest -u "$ATLAS_PUBLIC_KEY:$ATLAS_PRIVATE_KEY" \
             --header "Content-Type: application/json" \
             --request POST \
             --data "{\"ipAddress\": \"$NAT_IP\", \"comment\": \"NAT Gateway IP\"}" \
             "https://cloud.mongodb.com/api/atlas/v1.0/groups/$ATLAS_PROJECT_ID/accessList"
+          )
 
-          echo "NAT Gateway IP $NAT_IP added to MongoDB Atlas Access List."
+          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "409" ]; then
+            echo "Failed to add NAT IP to Atlas Access List (HTTP $HTTP_CODE)."
+            cat /tmp/atlas-accesslist-response.json
+            exit 1
+          fi
+
+          echo "Atlas Access List update completed for NAT IP $NAT_IP (HTTP $HTTP_CODE)."

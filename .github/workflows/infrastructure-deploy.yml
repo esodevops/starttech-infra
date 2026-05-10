@@ -245,6 +245,18 @@ jobs:
             exit 1
           fi
 
+          # Trim accidental whitespace/newlines from secrets copied into GitHub Actions.
+          ATLAS_PUBLIC_KEY_CLEAN=$(printf '%s' "$ATLAS_PUBLIC_KEY" | tr -d '\r\n' | xargs)
+          ATLAS_PRIVATE_KEY_CLEAN=$(printf '%s' "$ATLAS_PRIVATE_KEY" | tr -d '\r\n' | xargs)
+          ATLAS_PROJECT_ID_CLEAN=$(printf '%s' "$ATLAS_PROJECT_ID" | tr -d '\r\n' | xargs)
+
+          if [ -z "$ATLAS_PUBLIC_KEY_CLEAN" ] || [ -z "$ATLAS_PRIVATE_KEY_CLEAN" ] || [ -z "$ATLAS_PROJECT_ID_CLEAN" ]; then
+            echo "Atlas secrets became empty after trimming whitespace; re-check secret values."
+            exit 1
+          fi
+
+          ATLAS_ACCESS_LIST_URL="https://cloud.mongodb.com/api/atlas/v1.0/groups/$ATLAS_PROJECT_ID_CLEAN/accessList"
+
           NAT_IP=$(aws ec2 describe-addresses \
             --filters "Name=tag:Name,Values=starttech-nat-eip" \
             --query "Addresses[0].PublicIp" \
@@ -271,21 +283,40 @@ jobs:
 
           echo "Ensuring NAT Gateway IP $NAT_IP is present in MongoDB Atlas Access List..."
 
-          ACCESS_LIST_JSON=$(curl -sS --digest -u "$ATLAS_PUBLIC_KEY:$ATLAS_PRIVATE_KEY" \
-            "https://cloud.mongodb.com/api/atlas/v1.0/groups/$ATLAS_PROJECT_ID/accessList")
+          set +e
+          ACCESS_LIST_JSON=$(curl -sS --http1.1 --ipv4 --connect-timeout 20 --retry 2 --retry-delay 2 \
+            --digest -u "$ATLAS_PUBLIC_KEY_CLEAN:$ATLAS_PRIVATE_KEY_CLEAN" \
+            "$ATLAS_ACCESS_LIST_URL")
+          CURL_GET_EXIT=$?
+          set -e
+
+          if [ $CURL_GET_EXIT -ne 0 ]; then
+            echo "Failed to query Atlas Access List (curl exit: $CURL_GET_EXIT)."
+            echo "Check ATLAS_* secret formatting and Atlas API key permissions."
+            exit 1
+          fi
 
           if printf '%s' "$ACCESS_LIST_JSON" | grep -q "$NAT_IP"; then
             echo "NAT Gateway IP $NAT_IP already exists in Atlas Access List."
             exit 0
           fi
 
-          HTTP_CODE=$(curl -sS -o /tmp/atlas-accesslist-response.json -w "%{http_code}" \
-            --digest -u "$ATLAS_PUBLIC_KEY:$ATLAS_PRIVATE_KEY" \
+          set +e
+          HTTP_CODE=$(curl -sS --http1.1 --ipv4 --connect-timeout 20 --retry 2 --retry-delay 2 \
+            -o /tmp/atlas-accesslist-response.json -w "%{http_code}" \
+            --digest -u "$ATLAS_PUBLIC_KEY_CLEAN:$ATLAS_PRIVATE_KEY_CLEAN" \
             --header "Content-Type: application/json" \
             --request POST \
             --data "{\"ipAddress\": \"$NAT_IP\", \"comment\": \"NAT Gateway IP\"}" \
-            "https://cloud.mongodb.com/api/atlas/v1.0/groups/$ATLAS_PROJECT_ID/accessList"
-          )
+            "$ATLAS_ACCESS_LIST_URL")
+          CURL_POST_EXIT=$?
+          set -e
+
+          if [ $CURL_POST_EXIT -ne 0 ]; then
+            echo "Failed to update Atlas Access List (curl exit: $CURL_POST_EXIT)."
+            echo "Check ATLAS_* secrets and network egress from the runner."
+            exit 1
+          fi
 
           if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "409" ]; then
             echo "Failed to add NAT IP to Atlas Access List (HTTP $HTTP_CODE)."

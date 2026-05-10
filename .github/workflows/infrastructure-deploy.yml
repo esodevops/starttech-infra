@@ -307,7 +307,7 @@ jobs:
             --digest -u "$ATLAS_PUBLIC_KEY_CLEAN:$ATLAS_PRIVATE_KEY_CLEAN" \
             --header "Content-Type: application/json" \
             --request POST \
-            --data "{\"ipAddress\": \"$NAT_IP\", \"comment\": \"NAT Gateway IP\"}" \
+            --data "[{\"ipAddress\": \"$NAT_IP\", \"comment\": \"NAT Gateway IP\"}]" \
             "$ATLAS_ACCESS_LIST_URL")
           CURL_POST_EXIT=$?
           set -e

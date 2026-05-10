@@ -29,7 +29,32 @@ fi
 
 # Step 1: Initialize (download providers, configure S3 backend)
 echo "Step 1/3 — Initializing Terraform..."
-terraform init
+
+AWS_REGION="${AWS_REGION:-us-east-1}"
+TF_STATE_BUCKET_PREFIX="${TF_STATE_BUCKET_PREFIX:-starttech-terraform-state}"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+EXPECTED_STATE_BUCKET="${TF_STATE_BUCKET_PREFIX}-${ACCOUNT_ID}-${AWS_REGION}"
+
+if aws s3api head-bucket --bucket "$EXPECTED_STATE_BUCKET" 2>/dev/null; then
+  TF_STATE_BUCKET="$EXPECTED_STATE_BUCKET"
+else
+  TF_STATE_BUCKET=$(aws s3api list-buckets \
+    --query "Buckets[?starts_with(Name, '${TF_STATE_BUCKET_PREFIX}')].Name | [0]" \
+    --output text)
+fi
+
+if [ -z "$TF_STATE_BUCKET" ] || [ "$TF_STATE_BUCKET" = "None" ]; then
+  echo "ERROR: Could not find Terraform state bucket."
+  echo "Expected: $EXPECTED_STATE_BUCKET"
+  exit 1
+fi
+
+echo "Using Terraform state bucket: $TF_STATE_BUCKET"
+terraform init \
+  -reconfigure \
+  -backend-config="bucket=$TF_STATE_BUCKET" \
+  -backend-config="key=prod/terraform.tfstate" \
+  -backend-config="region=$AWS_REGION"
 
 # Step 2: Show what will change
 echo ""

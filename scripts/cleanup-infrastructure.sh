@@ -69,7 +69,7 @@ if [ -z "$TF_VAR_docker_image" ]; then
       --launch-template-id "$LT_ID" --versions '$Latest' \
       --query "LaunchTemplateVersions[0].LaunchTemplateData.UserData" \
       --output text --region "$AWS_REGION" 2>/dev/null | base64 --decode 2>/dev/null || true)
-    TF_VAR_docker_image=$(echo "$USER_DATA" | grep -oP 'DOCKER_IMAGE=\K\S+' | head -1 || true)
+    TF_VAR_docker_image=$(echo "$USER_DATA" | sed -nE 's/.*DOCKER_IMAGE=([^[:space:]]+).*/\1/p' | head -1 || true)
     [ -n "$TF_VAR_docker_image" ] && echo "  docker_image  → $TF_VAR_docker_image (from launch template)"
   fi
 fi

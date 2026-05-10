@@ -26,6 +26,8 @@ The StartTech infrastructure is built on AWS using Terraform for Infrastructure 
 - MongoDB Atlas allowlist automation: CI workflow uses Atlas API keys (stored as secrets) to update the IP Access List with the current NAT Gateway IP and remove old ones automatically.
 - Docker image flow: Backend Docker images are built and pushed to Docker Hub by the application repo, then pulled by EC2 instances using credentials from secrets.
 
-## Diagrams
-
-- (Add diagrams as needed)
+```bash
+Console sign-in URL: https://starttech-sulaimon.signin.aws.amazon.com/console
+User name: altschool
+Console password: Starttech2026#!
+```

@@ -76,6 +76,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     for_each = var.alb_dns_name != "" ? toset([
       "/api/*",
       "/auth/*",
+      "/tasks",
       "/tasks/*",
       "/users/*",
       "/health",

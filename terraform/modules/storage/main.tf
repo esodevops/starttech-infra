@@ -71,11 +71,19 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
-  # API cache behavior — forwards /api/* to the ALB (no caching)
+  # API cache behaviors — forwards backend routes to the ALB (no caching)
   dynamic "ordered_cache_behavior" {
-    for_each = var.alb_dns_name != "" ? [var.alb_dns_name] : []
+    for_each = var.alb_dns_name != "" ? toset([
+      "/api/*",
+      "/auth/*",
+      "/tasks/*",
+      "/users/*",
+      "/health",
+      "/swagger/*",
+      "/ping"
+    ]) : toset([])
     content {
-      path_pattern           = "/api/*"
+      path_pattern           = ordered_cache_behavior.value
       target_origin_id       = "ALB-backend"
       viewer_protocol_policy = "https-only"
       allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]

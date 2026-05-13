@@ -23,4 +23,6 @@ mongo_uri = "mongodb+srv://user:password@cluster.mongodb.net/muchToDo"
 frontend_bucket_name = "starttech-frontend-prod-your-unique-suffix"
 
 # Email to receive CloudWatch alarm notifications
-alert_email = "devops@yourcompany.com"
+alert_email = "you@example.com"
+# CloudFront API proxy origin (ALB DNS from Terraform output backend_url)
+alb_dns_name = "starttech-alb-xxxxxxxxxx.us-east-1.elb.amazonaws.com"

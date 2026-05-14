@@ -105,6 +105,7 @@ resource "aws_launch_template" "backend" {
     docker_image         = var.docker_image
     mongo_uri            = var.mongo_uri
     redis_endpoint       = var.redis_endpoint
+    allowed_origins      = var.allowed_origins
     cloudwatch_log_group = var.cloudwatch_log_group
   }))
 

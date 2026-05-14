@@ -82,6 +82,12 @@ variable "redis_endpoint" {
   type        = string
 }
 
+variable "allowed_origins" {
+  description = "Comma-separated list of allowed CORS origins for the backend"
+  type        = string
+  default     = "http://localhost:5173"
+}
+
 variable "cloudwatch_log_group" {
   description = "CloudWatch log group name for backend logs"
   type        = string

@@ -83,11 +83,12 @@ module "compute" {
   alb_security_group_id     = module.networking.alb_security_group_id
   backend_security_group_id = module.networking.backend_security_group_id
 
-  ami_id         = var.ami_id
-  instance_type  = var.instance_type
-  docker_image   = var.docker_image
-  mongo_uri      = var.mongo_uri
-  redis_endpoint = module.storage.redis_endpoint
+  ami_id          = var.ami_id
+  instance_type   = var.instance_type
+  docker_image    = var.docker_image
+  mongo_uri       = var.mongo_uri
+  redis_endpoint  = module.storage.redis_endpoint
+  allowed_origins = "http://localhost:5173,https://${module.storage.cloudfront_domain_name}"
 
   cloudwatch_log_group      = module.monitoring.backend_log_group_name
   iam_instance_profile_name = "${var.project_name}-ec2-profile"

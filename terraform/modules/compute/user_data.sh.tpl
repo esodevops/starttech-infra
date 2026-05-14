@@ -57,6 +57,7 @@ docker run -d \
   --restart always \
   -p 8080:8080 \
   -e MONGO_URI="${mongo_uri}" \
+  -e ALLOWED_ORIGINS="${allowed_origins}" \
   -e REDIS_ADDR="${redis_endpoint}:6379" \
   -e PORT=8080 \
   -v /var/log/app:/var/log/app \

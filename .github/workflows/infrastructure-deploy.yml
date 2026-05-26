@@ -178,6 +178,7 @@ jobs:
           fi
 
       # Step 11 — Export key Terraform outputs for downstream use (main only)
+
       - name: Export Terraform outputs
         id: export_outputs
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -185,10 +186,14 @@ jobs:
           FRONTEND_BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
           CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
           BACKEND_URL=$(terraform output -raw backend_url)
+          BACKEND_LOG_GROUP=$(terraform output -raw backend_log_group)
+          BACKEND_LOG_STREAM=$(terraform output -raw backend_log_stream)
 
           echo "frontend_bucket_name=$FRONTEND_BUCKET_NAME" >> "$GITHUB_OUTPUT"
           echo "cloudfront_distribution_id=$CLOUDFRONT_DISTRIBUTION_ID" >> "$GITHUB_OUTPUT"
           echo "backend_url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+          echo "backend_log_group=$BACKEND_LOG_GROUP" >> "$GITHUB_OUTPUT"
+          echo "backend_log_stream=$BACKEND_LOG_STREAM" >> "$GITHUB_OUTPUT"
 
           {
             echo "## Terraform Outputs For starttech-application"
@@ -198,6 +203,8 @@ jobs:
             echo "- S3_BUCKET_NAME = $FRONTEND_BUCKET_NAME"
             echo "- CLOUDFRONT_DISTRIBUTION_ID = $CLOUDFRONT_DISTRIBUTION_ID"
             echo "- REACT_APP_API_URL = $BACKEND_URL"
+            echo "- CLOUDWATCH_LOG_GROUP = $BACKEND_LOG_GROUP"
+            echo "- CLOUDWATCH_LOG_STREAM = $BACKEND_LOG_STREAM"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Step 12 — Sync infra outputs to starttech-application and starttech-infra secrets
@@ -212,6 +219,8 @@ jobs:
           FRONTEND_BUCKET_NAME: ${{ steps.export_outputs.outputs.frontend_bucket_name }}
           CLOUDFRONT_DISTRIBUTION_ID: ${{ steps.export_outputs.outputs.cloudfront_distribution_id }}
           REACT_APP_API_URL: ${{ steps.export_outputs.outputs.backend_url }}
+          CLOUDWATCH_LOG_GROUP: ${{ steps.export_outputs.outputs.backend_log_group }}
+          CLOUDWATCH_LOG_STREAM: ${{ steps.export_outputs.outputs.backend_log_stream }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "Missing APP_REPO_SECRETS_PAT in starttech-infra repo secrets."
@@ -219,7 +228,7 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ] || [ -z "$REACT_APP_API_URL" ]; then
+          if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ] || [ -z "$REACT_APP_API_URL" ] || [ -z "$CLOUDWATCH_LOG_GROUP" ] || [ -z "$CLOUDWATCH_LOG_STREAM" ]; then
             echo "One or more Terraform outputs are empty; refusing to sync incomplete secrets."
             exit 1
           fi
@@ -227,9 +236,11 @@ jobs:
           gh secret set S3_BUCKET_NAME --repo "$TARGET_REPO" --body "$FRONTEND_BUCKET_NAME"
           gh secret set CLOUDFRONT_DISTRIBUTION_ID --repo "$TARGET_REPO" --body "$CLOUDFRONT_DISTRIBUTION_ID"
           gh secret set REACT_APP_API_URL --repo "$TARGET_REPO" --body "$REACT_APP_API_URL"
+          gh secret set CLOUDWATCH_LOG_GROUP --repo "$TARGET_REPO" --body "$CLOUDWATCH_LOG_GROUP"
+          gh secret set CLOUDWATCH_LOG_STREAM --repo "$TARGET_REPO" --body "$CLOUDWATCH_LOG_STREAM"
           gh secret set BACKEND_URL --repo "$SOURCE_REPO" --body "$REACT_APP_API_URL"
 
-          echo "Synced S3_BUCKET_NAME, CLOUDFRONT_DISTRIBUTION_ID, and REACT_APP_API_URL to $TARGET_REPO"
+          echo "Synced S3_BUCKET_NAME, CLOUDFRONT_DISTRIBUTION_ID, REACT_APP_API_URL, CLOUDWATCH_LOG_GROUP, and CLOUDWATCH_LOG_STREAM to $TARGET_REPO"
           echo "Synced BACKEND_URL to $SOURCE_REPO"
 
       # Step 13 — Add NAT Gateway IP to MongoDB Atlas Access List

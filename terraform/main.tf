@@ -91,5 +91,6 @@ module "compute" {
   allowed_origins = "http://localhost:5173,https://${module.storage.cloudfront_domain_name}"
 
   cloudwatch_log_group      = module.monitoring.backend_log_group_name
+  aws_region                = var.aws_region
   iam_instance_profile_name = "${var.project_name}-ec2-profile"
 }

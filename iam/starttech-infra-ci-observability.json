@@ -56,6 +56,7 @@
         "logs:CreateLogStream",
         "logs:DescribeLogStreams",
         "logs:PutLogEvents",
+        "logs:DeleteLogStream",
         "cloudwatch:PutMetricAlarm",
         "cloudwatch:DeleteAlarms",
         "cloudwatch:DescribeAlarms",

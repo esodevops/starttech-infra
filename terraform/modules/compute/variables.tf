@@ -93,6 +93,11 @@ variable "cloudwatch_log_group" {
   type        = string
 }
 
+variable "aws_region" {
+  description = "AWS region used by Docker awslogs log driver"
+  type        = string
+}
+
 variable "iam_instance_profile_name" {
   description = "IAM instance profile to attach to EC2 instances"
   type        = string

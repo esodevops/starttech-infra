@@ -107,6 +107,7 @@ resource "aws_launch_template" "backend" {
     redis_endpoint       = var.redis_endpoint
     allowed_origins      = var.allowed_origins
     cloudwatch_log_group = var.cloudwatch_log_group
+    aws_region           = var.aws_region
   }))
 
   # Always use the latest version of this template when ASG creates instances

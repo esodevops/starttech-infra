@@ -26,7 +26,7 @@ docker run -d \
   --log-opt awslogs-region="${aws_region}" \
   --log-opt awslogs-group="${cloudwatch_log_group}" \
   --log-opt awslogs-create-group=false \
-  --log-opt awslogs-stream="backend-$${INSTANCE_ID}" \
+  --log-opt awslogs-stream="backend-logs" \
   -p 8080:8080 \
   -e MONGO_URI="${mongo_uri}" \
   -e ALLOWED_ORIGINS="${allowed_origins}" \

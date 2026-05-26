@@ -1,6 +1,6 @@
 # ---- CloudWatch Log Stream for Backend ----
 resource "aws_cloudwatch_log_stream" "backend_api" {
-  name           = "backend-api"
+  name           = "backend-logs"
   log_group_name = aws_cloudwatch_log_group.backend.name
 }
 # -------------------------------------------------

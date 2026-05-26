@@ -1,3 +1,8 @@
+# ---- CloudWatch Log Stream for Backend ----
+resource "aws_cloudwatch_log_stream" "backend_api" {
+  name           = "backend-api"
+  log_group_name = aws_cloudwatch_log_group.backend.name
+}
 # -------------------------------------------------
 # Monitoring Module - Main Resources
 # Creates: CloudWatch Log Groups, SNS topic for

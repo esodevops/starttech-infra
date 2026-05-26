@@ -1,3 +1,7 @@
+output "backend_log_stream_name" {
+  description = "CloudWatch log stream name for backend logs"
+  value       = aws_cloudwatch_log_stream.backend_api.name
+}
 # -------------------------------------------------
 # Monitoring Module - Outputs
 # -------------------------------------------------

@@ -1,3 +1,7 @@
+output "backend_log_stream" {
+  description = "CloudWatch log stream where backend logs appear"
+  value       = module.monitoring.backend_log_stream_name
+}
 # -------------------------------------------------
 # Root Terraform - Outputs
 # These print the important URLs/names after deploy

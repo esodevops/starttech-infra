@@ -65,10 +65,9 @@ module "monitoring" {
   environment  = var.environment
   alert_email  = var.alert_email
 
-  # These come from the compute module output — pass dummy values during first apply
-  # Terraform will update them on the second apply once the ALB exists.
-  alb_arn_suffix          = try(module.compute.alb_arn, "")
-  target_group_arn_suffix = try(module.compute.target_group_arn, "")
+  # These are metric dimensions used for ALB alarms/dashboard widgets.
+  alb_arn_suffix          = module.compute.alb_arn_suffix
+  target_group_arn_suffix = module.compute.target_group_arn_suffix
 }
 
 # ---- Module 4: Compute (ALB + EC2 ASG) ----
@@ -90,7 +89,7 @@ module "compute" {
   redis_endpoint  = module.storage.redis_endpoint
   allowed_origins = "http://localhost:5173,https://${module.storage.cloudfront_domain_name}"
 
-  cloudwatch_log_group      = module.monitoring.backend_log_group_name
+  cloudwatch_log_group      = "/starttech/${var.environment}/backend"
   aws_region                = var.aws_region
   iam_instance_profile_name = "${var.project_name}-ec2-profile"
 }
